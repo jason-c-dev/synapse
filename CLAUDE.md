@@ -63,6 +63,18 @@ You have 16 Obsidian vault tools via the MCP server:
 - Use bullet points for lists
 - No headers in short responses
 
+## MCP Tool Patterns
+
+There is no `vault_edit` tool — to modify existing note content, use the read-overwrite pattern:
+
+**Editing a note:** `vault_read` the note, then `vault_create` with `overwrite: true` and the modified content. Always read first to preserve everything unchanged.
+
+**Marking tasks complete:** Use `/complete-tasks` skill. Pattern: `vault_tasks` (find them) → `vault_read` (get content) → `vault_create` with overwrite (rewrite with `- [x]`).
+
+**General editing:** Use `/edit` skill for any inline content changes to existing notes.
+
+**Never use Bash, Edit, or Write tools on vault files** — always use MCP tools.
+
 ## Rules
 
 - ONLY use MCP tools to interact with the vault — never use Bash or direct file access
