@@ -3,6 +3,9 @@ import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { runClaude } from './claude.js';
+import { logger } from './log.js';
+
+const log = logger('session');
 
 const SESSION_DIR = resolve(config.projectDir, '.sessions');
 const SESSION_FILE = resolve(SESSION_DIR, 'current.json');
@@ -61,11 +64,11 @@ export function isExpired(session) {
  */
 export async function flushSession(sessionId) {
   try {
-    console.log(`[session] Flushing session ${sessionId}`);
+    log.info(`Flushing session ${sessionId}`);
     await runClaude(FLUSH_PROMPT, { resume: sessionId });
-    console.log(`[session] Flush complete for ${sessionId}`);
+    log.info(`Flush complete for ${sessionId}`);
   } catch (err) {
-    console.error(`[session] Flush failed for ${sessionId}:`, err.message);
+    log.error(`Flush failed for ${sessionId}:`, err.message);
   }
 }
 

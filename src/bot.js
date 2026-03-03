@@ -6,6 +6,9 @@ import { config } from './config.js';
 import { runClaude } from './claude.js';
 import { getSession, resetSession, readSession, touchSession } from './session.js';
 import { formatForTelegram, splitMessage } from './format.js';
+import { logger } from './log.js';
+
+const log = logger('bot');
 
 const bot = new Telegraf(config.botToken, {
   // Disable Telegraf's internal handler timeout — we manage our own via CLAUDE_TIMEOUT
@@ -14,7 +17,10 @@ const bot = new Telegraf(config.botToken, {
 
 // Auth middleware — silently ignore non-allowed users
 bot.use((ctx, next) => {
-  if (!config.allowedUserIds.includes(ctx.from?.id)) return;
+  if (!config.allowedUserIds.includes(ctx.from?.id)) {
+    log.debug(`Ignored message from unauthorized user ${ctx.from?.id}`);
+    return;
+  }
   return next();
 });
 
@@ -39,7 +45,7 @@ bot.command('reset', async (ctx) => {
     await resetSession();
     await ctx.reply('Session reset. Starting fresh.');
   } catch (err) {
-    console.error('[reset]', err);
+    log.error('Reset failed:', err);
     await ctx.reply('Reset failed: ' + err.message);
   } finally {
     processing.delete(userId);
@@ -87,13 +93,16 @@ async function handleMessage(ctx, message, { addDirs, onComplete } = {}) {
   try {
     // Get or create session
     const { sessionId, isNew } = await getSession();
+    log.debug(`Session ${sessionId.slice(0, 8)} (${isNew ? 'new' : 'resumed'})`);
 
     // Build claude options
     const claudeOpts = isNew ? { sessionId } : { resume: sessionId };
     if (addDirs) claudeOpts.addDirs = addDirs;
 
     // Run Claude
+    const start = Date.now();
     const response = await runClaude(message, claudeOpts);
+    log.debug(`Claude responded in ${((Date.now() - start) / 1000).toFixed(1)}s (${response.length} chars)`);
 
     // Update session timestamp
     touchSession();
@@ -111,7 +120,7 @@ async function handleMessage(ctx, message, { addDirs, onComplete } = {}) {
       }
     }
   } catch (err) {
-    console.error('[message]', err);
+    log.error('Message handling failed:', err);
     await ctx.reply('Something went wrong: ' + err.message);
   } finally {
     clearInterval(typingInterval);
@@ -158,7 +167,7 @@ bot.on('photo', async (ctx) => {
     const tempPath = join(config.imageTempDir, filename);
     writeFileSync(tempPath, buffer);
 
-    console.log(`[photo] Saved ${filename} (${Math.round(buffer.length / 1024)}KB) to vault + temp`);
+    log.info(`Saved ${filename} (${Math.round(buffer.length / 1024)}KB) to vault + temp`);
 
     const message = [
       `The user sent a photo. It has been saved to the vault as ![[${filename}]].`,
@@ -175,20 +184,20 @@ bot.on('photo', async (ctx) => {
       },
     });
   } catch (err) {
-    console.error('[photo]', err);
+    log.error('Photo processing failed:', err);
     await ctx.reply('Failed to process the image: ' + err.message);
   }
 });
 
 // Catch unhandled errors so the bot doesn't crash
 bot.catch((err, ctx) => {
-  console.error('[bot] Unhandled error:', err.message);
+  log.error('Unhandled error:', err.message);
   ctx.reply('Something went wrong. Try again.').catch(() => {});
 });
 
 // Graceful shutdown
 function shutdown(signal) {
-  console.log(`\n[bot] ${signal} received, shutting down...`);
+  log.info(`${signal} received, shutting down...`);
   bot.stop(signal);
   process.exit(0);
 }
@@ -198,4 +207,4 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Launch
 bot.launch();
-console.log('[bot] Second brain bot is running (long polling)');
+log.info('Synapse is running (long polling)');

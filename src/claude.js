@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process';
 import { config } from './config.js';
+import { logger } from './log.js';
+
+const log = logger('claude');
 
 /**
  * Run claude -p with a message, optionally within a session.
@@ -38,6 +41,8 @@ export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
   ];
   env.PATH = [...extraPaths, env.PATH].join(':');
 
+  log.debug(`Spawning: claude ${args.join(' ').slice(0, 120)}...`);
+
   return new Promise((resolve, reject) => {
     const child = spawn('claude', args, {
       cwd: config.projectDir,
@@ -58,6 +63,9 @@ export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
 
     child.on('close', (code) => {
       clearTimeout(timer);
+
+      log.debug(`Process exited with code ${code}`);
+      if (stderr) log.debug(`stderr: ${stderr.slice(0, 200)}`);
 
       if (code !== 0 && !stdout) {
         reject(new Error(`Claude exited with code ${code}: ${stderr}`));

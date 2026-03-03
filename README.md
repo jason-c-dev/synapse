@@ -96,6 +96,11 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
    npm run dev
    ```
 
+   For verbose output while debugging:
+   ```bash
+   npm run dev:debug
+   ```
+
 ## Configuration
 
 | Variable | Required | Default | Description |
@@ -106,6 +111,7 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `CLAUDE_TIMEOUT` | No | `120000` | Max milliseconds to wait for Claude to respond |
 | `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo support |
 | `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
+| `LOG_LEVEL` | No | `info` | Logging verbosity: `error`, `warn`, `info`, or `debug` |
 
 ## Usage
 
@@ -144,7 +150,8 @@ Sessions give Claude conversational memory across messages:
 │   ├── claude.js      # Spawns claude -p with session management flags
 │   ├── session.js     # Session lifecycle: create, resume, expire, flush
 │   ├── config.js      # Env loading and validation
-│   └── format.js      # Obsidian markdown → Telegram formatting, message splitting
+│   ├── format.js      # Obsidian markdown → Telegram formatting, message splitting
+│   └── log.js         # Leveled logger (error/warn/info/debug)
 └── .claude/
     └── skills/        # Claude Code skill definitions (capture, find, log, etc.)
 ```
@@ -158,6 +165,7 @@ Sessions give Claude conversational memory across messages:
 - **Legacy Markdown** for Telegram — MarkdownV2 requires escaping 18 special characters; legacy mode is forgiving enough for this use case
 - **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
 - **Images bypass Claude's context** — photos are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see and analyze the image without base64 bloating the prompt
+- **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` shows Claude spawn args, response times, and exit codes for easy troubleshooting
 
 ## Related
 
