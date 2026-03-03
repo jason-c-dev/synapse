@@ -142,7 +142,7 @@ Sessions give Claude conversational memory across messages:
 ## Project Structure
 
 ```
-├── CLAUDE.md          # System prompt — defines Claude's vault assistant behavior
+├── CLAUDE.md          # System prompt, vault behavior, and MCP tool patterns
 ├── .env.example       # Environment variable template
 ├── package.json       # ESM, single dependency (telegraf)
 ├── src/
@@ -153,14 +153,28 @@ Sessions give Claude conversational memory across messages:
 │   ├── format.js      # Obsidian markdown → Telegram formatting, message splitting
 │   └── log.js         # Leveled logger (error/warn/info/debug)
 └── .claude/
-    └── skills/        # Claude Code skill definitions (capture, find, log, etc.)
+    └── skills/        # Claude Code skill definitions (capture, find, log, complete-tasks, edit, etc.)
 ```
+
+## Why `claude -p` and Not the Agent SDK
+
+Synapse uses `claude -p` (Claude Code's prompt mode) rather than the Anthropic Agent SDK. Telegram is just the transport layer — each message is passed to Claude as if you were talking to it directly, with session flags for conversational memory.
+
+This is a deliberate choice:
+
+- **Fixed cost** — runs on Anthropic's Max plan (flat monthly fee), no per-token API charges. For personal use, this is significantly cheaper than the API
+- **No API key required** — Claude Code authenticates via your subscription, not an API key
+- **Terms-compliant** — stays on the right side of Anthropic's acceptable use for personal, non-commercial automation via Claude Code
+- **Good enough for async chat** — response latency is acceptable for a Telegram bot where you're not expecting sub-second replies
+
+**Roadmap: Agent SDK support.** For business and commercial use cases, a future version will support the Anthropic Agent SDK as an alternative invocation backend. This would provide faster responses through long-running sessions and streaming, but at higher cost (per-token API pricing). The invocation layer is largely isolated in `claude.js`, though session management (`session.js`) is currently coupled to `claude -p`'s CLI session model and would also need adapting.
 
 ## Design Decisions
 
 - **Plain JavaScript, ESM, no build step** — simple wrapper, fast iteration
-- **Single dependency** (Telegraf) — no dotenv, no TypeScript, no framework
+- **Single dependency** (Telegraf) — .env is parsed manually in config.js, no dotenv package, no TypeScript, no framework
 - **Long polling** — personal bot running locally, no public URL needed for webhooks
+- **`claude -p` over Agent SDK** — fixed-cost Max plan for personal use; Agent SDK on the roadmap for commercial deployments (see above)
 - **`--dangerously-skip-permissions`** — required for non-interactive MCP tool use in `claude -p` mode
 - **Legacy Markdown** for Telegram — MarkdownV2 requires escaping 18 special characters; legacy mode is forgiving enough for this use case
 - **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
