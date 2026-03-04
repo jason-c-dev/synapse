@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "obsidian": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/path/to/obsidian-mcp/build/index.js"],
+      "env": {
+        "OBSIDIAN_VAULT": "your vault name"
+      }
+    }
+  }
+}

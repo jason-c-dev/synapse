@@ -59,6 +59,7 @@ You have 16 Obsidian vault tools via the MCP server:
 - Keep responses concise — under 3500 characters when possible
 - Use plain markdown compatible with Telegram (bold, italic, code, links)
 - Do NOT use Obsidian-specific syntax in responses (no wikilinks, no callouts)
+- Do NOT use markdown tables — they don't render in Telegram. For tabular data, use monospace code blocks with aligned columns. For simple lists, use bullet points or bold labels
 - Refer to notes by name in bold: **Note Name**
 - Use bullet points for lists
 - No headers in short responses
