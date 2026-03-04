@@ -7,8 +7,9 @@ const log = logger('claude');
 /**
  * Parse a stream-json event and log interesting activity.
  * Returns extracted text if the event contains assistant text content.
+ * Optionally forwards structured events via onEvent callback.
  */
-function processEvent(event) {
+function processEvent(event, onEvent) {
   if (event.type === 'system' && event.subtype === 'init') {
     log.debug(`Session initialized (${event.tools?.length || 0} tools)`);
     return null;
@@ -19,6 +20,9 @@ function processEvent(event) {
       if (block.type === 'tool_use') {
         const input = JSON.stringify(block.input || {});
         log.debug(`Tool call: ${block.name} ${input.slice(0, 200)}${input.length > 200 ? '...' : ''}`);
+        if (onEvent) {
+          onEvent({ type: 'tool_use', name: block.name, input: block.input || {} });
+        }
       }
       if (block.type === 'text' && block.text) {
         return block.text;
@@ -33,6 +37,9 @@ function processEvent(event) {
           ? block.content.slice(0, 150)
           : JSON.stringify(block.content)?.slice(0, 150);
         log.debug(`Tool result: ${preview}${(preview?.length || 0) >= 150 ? '...' : ''}`);
+        if (onEvent) {
+          onEvent({ type: 'tool_result', content: preview || '' });
+        }
       }
     }
   }
@@ -42,6 +49,15 @@ function processEvent(event) {
     if (event.num_turns != null) parts.push(`${event.num_turns} turns`);
     if (event.cost_usd != null) parts.push(`$${event.cost_usd.toFixed(4)}`);
     if (parts.length) log.debug(`Result: ${event.subtype} (${parts.join(', ')})`);
+    if (onEvent) {
+      onEvent({
+        type: 'result',
+        subtype: event.subtype,
+        text: event.result || null,
+        cost: event.cost_usd ?? null,
+        turns: event.num_turns ?? null,
+      });
+    }
     return event.result || null;
   }
 
@@ -56,9 +72,10 @@ function processEvent(event) {
  * @param {string} [options.sessionId] - Start a new session with this UUID (--session-id)
  * @param {string} [options.resume] - Resume an existing session (--resume)
  * @param {string[]} [options.addDirs] - Additional directories to grant tool access to (--add-dir)
+ * @param {function} [options.onEvent] - Callback for streaming events (tool_use, tool_result, result)
  * @returns {Promise<string>} Claude's response text
  */
-export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
+export async function runClaude(message, { sessionId, resume, addDirs, onEvent } = {}) {
   const args = [
     '-p', message,
     '--output-format', 'stream-json',
@@ -112,7 +129,7 @@ export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
 
         try {
           const event = JSON.parse(line);
-          const text = processEvent(event);
+          const text = processEvent(event, onEvent);
           if (text) {
             if (event.type === 'result') {
               finalResult = text;

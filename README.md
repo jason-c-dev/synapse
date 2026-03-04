@@ -22,11 +22,12 @@ And because it runs on your machine through Claude Code, there's no middleware �
 ```
 Telegram message
   → Telegraf bot (long polling)
-    → claude -p "your message" --session-id <uuid>
-      → Claude reads CLAUDE.md for behavior instructions
-      → Claude calls Obsidian MCP tools to read/write your vault
-    → Response formatted for Telegram
-  → Reply sent back
+    → Message queue (per-user, sequential)
+      → claude -p "your message" --output-format stream-json
+        → Tool call events streamed to Telegram as progress updates
+        → Claude calls MCP tools to read/write vault
+      → Response formatted for Telegram
+    → Reply sent back
 ```
 
 Sessions persist throughout the day (or a configurable window), so Claude remembers earlier messages. When a session expires, Claude does a final reconciliation pass — reviewing the conversation, capturing anything missed, and appending a summary to your daily note.
@@ -116,6 +117,8 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `CLAUDE_TIMEOUT` | No | `120000` | Max milliseconds to wait for Claude to respond |
 | `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo support |
 | `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
+| `PROGRESS_MODE` | No | `off` | Progress feedback during Claude processing: `off` (typing indicator only), `standard` (acknowledgment + generic activity labels), `detailed` (tool names, inputs, and cost summary) |
+| `QUEUE_DEPTH` | No | `3` | Maximum queued messages per user. Messages beyond this limit are rejected |
 | `LOG_LEVEL` | No | `info` | Logging verbosity: `error`, `warn`, `info`, or `debug` |
 | `LOG_FILE` | No | — | Path to a log file. When set, all output is appended here in addition to the console |
 
@@ -157,6 +160,8 @@ Sessions give Claude conversational memory across messages:
 │   ├── session.js     # Session lifecycle: create, resume, expire, flush
 │   ├── config.js      # Env loading and validation
 │   ├── format.js      # Obsidian markdown → Telegram formatting, message splitting
+│   ├── progress.js    # Progress reporting: status messages, throttled edits, mode-aware formatting
+│   ├── queue.js       # Per-user message queue with depth limits
 │   └── log.js         # Leveled logger (error/warn/info/debug)
 └── .claude/
     └── skills/        # Claude Code skill definitions (capture, find, log, complete-tasks, edit, etc.)
@@ -184,6 +189,8 @@ This is a deliberate choice:
 - **`--dangerously-skip-permissions`** — required for non-interactive MCP tool use in `claude -p` mode
 - **Legacy Markdown** for Telegram — MarkdownV2 requires escaping 18 special characters; legacy mode is forgiving enough for this use case
 - **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
+- **Configurable progress updates** — three modes (`off`/`standard`/`detailed`) control how much feedback the user sees during Claude processing. `off` preserves silent behavior for derived bots targeting non-technical users. `detailed` streams tool call names and inputs for power users. Progress uses a single editable Telegram message (send once, edit in place) to avoid chat clutter, with throttled edits (~1/second) to respect Telegram rate limits
+- **Per-user message queue** — instead of rejecting messages while processing, queues them (up to `QUEUE_DEPTH`) and processes sequentially. Different users can process concurrently
 - **Images bypass Claude's context** — photos are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see and analyze the image without base64 bloating the prompt
 - **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` streams Claude's stderr in real-time and logs spawn args, response previews, and exit codes. `LOG_FILE` optionally writes all output to a file for `tail -f` debugging
 

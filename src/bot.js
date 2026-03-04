@@ -6,6 +6,8 @@ import { config } from './config.js';
 import { runClaude } from './claude.js';
 import { getSession, resetSession, readSession, touchSession } from './session.js';
 import { formatForTelegram, splitMessage } from './format.js';
+import { createProgressReporter } from './progress.js';
+import { startProcessing, doneProcessing, enqueue, isProcessing } from './queue.js';
 import { logger } from './log.js';
 
 const log = logger('bot');
@@ -24,8 +26,28 @@ bot.use((ctx, next) => {
   return next();
 });
 
-// Track users currently being processed to prevent concurrent calls
-const processing = new Set();
+// Tool labels for progress messages — generic enough for standard mode,
+// detailed mode appends the raw tool name + input summary
+const toolLabels = {
+  mcp__obsidian__vault_search: 'Searching...',
+  mcp__obsidian__vault_read: 'Reading notes...',
+  mcp__obsidian__vault_daily_read: 'Checking daily note...',
+  mcp__obsidian__vault_create: 'Writing...',
+  mcp__obsidian__vault_append: 'Adding to note...',
+  mcp__obsidian__vault_daily_append: 'Updating daily note...',
+  mcp__obsidian__vault_tasks: 'Reviewing tasks...',
+  mcp__obsidian__vault_files: 'Listing files...',
+  mcp__obsidian__vault_tags: 'Checking tags...',
+  mcp__obsidian__vault_links: 'Following links...',
+  mcp__obsidian__vault_backlinks: 'Checking backlinks...',
+  mcp__obsidian__vault_properties: 'Reading properties...',
+  mcp__obsidian__vault_list: 'Listing vaults...',
+  mcp__obsidian__vault_property_set: 'Setting property...',
+  mcp__obsidian__vault_move: 'Moving note...',
+  mcp__obsidian__vault_attachment: 'Saving attachment...',
+};
+
+const ackMessages = ['On it...', 'Working on that...', 'Let me check...', 'One moment...'];
 
 // /start command
 bot.start((ctx) => {
@@ -35,11 +57,11 @@ bot.start((ctx) => {
 // /reset command — flush current session and start fresh
 bot.command('reset', async (ctx) => {
   const userId = ctx.from.id;
-  if (processing.has(userId)) {
+  if (isProcessing(userId)) {
     return ctx.reply('Still processing your last message. Try again in a moment.');
   }
 
-  processing.add(userId);
+  startProcessing(userId);
   try {
     await ctx.reply('Flushing session...');
     await resetSession();
@@ -48,7 +70,7 @@ bot.command('reset', async (ctx) => {
     log.error('Reset failed:', err);
     await ctx.reply('Reset failed: ' + err.message);
   } finally {
-    processing.delete(userId);
+    doneProcessing(userId);
   }
 });
 
@@ -74,21 +96,21 @@ bot.command('status', async (ctx) => {
   await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
 });
 
-// Shared handler for processing a message through Claude
-async function handleMessage(ctx, message, { addDirs, onComplete } = {}) {
-  const userId = ctx.from.id;
-
-  if (processing.has(userId)) {
-    return ctx.reply('Still working on your last message. Hang tight.');
-  }
-
-  processing.add(userId);
-
+// Process a single message through Claude with progress reporting
+async function processMessage(ctx, message, { addDirs, onComplete } = {}) {
   // Start typing indicator, refresh every 4 seconds
   const typingInterval = setInterval(() => {
     ctx.sendChatAction('typing').catch(() => {});
   }, 4_000);
   ctx.sendChatAction('typing').catch(() => {});
+
+  const progress = createProgressReporter(ctx.telegram, ctx.chat.id, {
+    mode: config.progressMode,
+    toolLabels,
+    ackMessages,
+  });
+
+  let lastResultEvent = null;
 
   try {
     log.debug(`Message: ${message.slice(0, 200)}${message.length > 200 ? '...' : ''}`);
@@ -101,10 +123,20 @@ async function handleMessage(ctx, message, { addDirs, onComplete } = {}) {
     const claudeOpts = isNew ? { sessionId } : { resume: sessionId };
     if (addDirs) claudeOpts.addDirs = addDirs;
 
+    claudeOpts.onEvent = (event) => {
+      if (event.type === 'result') {
+        lastResultEvent = event;
+      }
+      progress.handleEvent(event);
+    };
+
     // Run Claude
     const start = Date.now();
     const response = await runClaude(message, claudeOpts);
     log.debug(`Claude responded in ${((Date.now() - start) / 1000).toFixed(1)}s (${response.length} chars)`);
+
+    // Clean up progress message before sending response
+    await progress.finish(lastResultEvent);
 
     // Update session timestamp
     touchSession();
@@ -123,16 +155,43 @@ async function handleMessage(ctx, message, { addDirs, onComplete } = {}) {
     }
   } catch (err) {
     log.error('Message handling failed:', err);
+    await progress.finish(null);
     await ctx.reply('Something went wrong: ' + err.message);
   } finally {
     clearInterval(typingInterval);
-    processing.delete(userId);
     if (onComplete) onComplete();
   }
 }
 
+// Entry point: process immediately or queue for later
+async function processOrQueue(ctx, message, opts = {}) {
+  const userId = ctx.from.id;
+
+  if (startProcessing(userId)) {
+    await processMessage(ctx, message, opts);
+    await drainQueue(userId);
+  } else {
+    const queued = enqueue(userId, { ctx, message, opts }, config.queueDepth);
+    if (queued) {
+      await ctx.reply("Got it, I'll handle that next.");
+    } else {
+      await ctx.reply("I'm backed up — try again in a moment.");
+    }
+  }
+}
+
+// Process queued messages until the queue is empty
+async function drainQueue(userId) {
+  let next = doneProcessing(userId);
+  while (next) {
+    startProcessing(userId);
+    await processMessage(next.ctx, next.message, next.opts);
+    next = doneProcessing(userId);
+  }
+}
+
 // Main text handler
-bot.on('text', (ctx) => handleMessage(ctx, ctx.message.text));
+bot.on('text', (ctx) => processOrQueue(ctx, ctx.message.text));
 
 // Photo handler — save image to vault + temp dir, let Claude see it via --add-dir
 bot.on('photo', async (ctx) => {
@@ -178,7 +237,7 @@ bot.on('photo', async (ctx) => {
       `Analyze the image, then act on their request — create or update the appropriate note with the image embedded using ![[${filename}]].`,
     ].join('\n');
 
-    await handleMessage(ctx, message, {
+    await processOrQueue(ctx, message, {
       addDirs: [config.imageTempDir],
       onComplete: () => {
         // Clean up temp file after Claude is done
