@@ -1,9 +1,19 @@
+import { createWriteStream } from 'node:fs';
+
 const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
 
 const level = LEVELS[process.env.LOG_LEVEL?.toLowerCase()] ?? LEVELS.info;
 
+const fileStream = process.env.LOG_FILE
+  ? createWriteStream(process.env.LOG_FILE, { flags: 'a' })
+  : null;
+
 function timestamp() {
   return new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
+}
+
+function format(prefix, args) {
+  return args.map(a => (a instanceof Error ? a.stack || a.message : typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
 }
 
 function log(lvl, tag, ...args) {
@@ -11,6 +21,7 @@ function log(lvl, tag, ...args) {
   const prefix = `${timestamp()} [${lvl.toUpperCase()}] [${tag}]`;
   const fn = lvl === 'error' ? console.error : lvl === 'warn' ? console.warn : console.log;
   fn(prefix, ...args);
+  if (fileStream) fileStream.write(`${prefix} ${format(prefix, args)}\n`);
 }
 
 export function logger(tag) {

@@ -101,6 +101,11 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
    npm run dev:debug
    ```
 
+   To write debug logs to a file (useful with `tail -f synapse.log`):
+   ```bash
+   npm run dev:log
+   ```
+
 ## Configuration
 
 | Variable | Required | Default | Description |
@@ -112,6 +117,7 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo support |
 | `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
 | `LOG_LEVEL` | No | `info` | Logging verbosity: `error`, `warn`, `info`, or `debug` |
+| `LOG_FILE` | No | — | Path to a log file. When set, all output is appended here in addition to the console |
 
 ## Usage
 
@@ -179,7 +185,7 @@ This is a deliberate choice:
 - **Legacy Markdown** for Telegram — MarkdownV2 requires escaping 18 special characters; legacy mode is forgiving enough for this use case
 - **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
 - **Images bypass Claude's context** — photos are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see and analyze the image without base64 bloating the prompt
-- **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` shows Claude spawn args, response times, and exit codes for easy troubleshooting
+- **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` streams Claude's stderr in real-time and logs spawn args, response previews, and exit codes. `LOG_FILE` optionally writes all output to a file for `tail -f` debugging
 
 ## Related
 

@@ -7,7 +7,8 @@
     "start": "node src/bot.js",
     "dev": "node --watch src/bot.js",
     "dev:debug": "LOG_LEVEL=debug node --watch src/bot.js",
-    "dev:warn": "LOG_LEVEL=warn node --watch src/bot.js"
+    "dev:warn": "LOG_LEVEL=warn node --watch src/bot.js",
+    "dev:log": "LOG_LEVEL=debug LOG_FILE=synapse.log node --watch src/bot.js"
   },
   "dependencies": {
     "telegraf": "^4.16"

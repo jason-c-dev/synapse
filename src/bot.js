@@ -91,6 +91,8 @@ async function handleMessage(ctx, message, { addDirs, onComplete } = {}) {
   ctx.sendChatAction('typing').catch(() => {});
 
   try {
+    log.debug(`Message: ${message.slice(0, 200)}${message.length > 200 ? '...' : ''}`);
+
     // Get or create session
     const { sessionId, isNew } = await getSession();
     log.debug(`Session ${sessionId.slice(0, 8)} (${isNew ? 'new' : 'resumed'})`);

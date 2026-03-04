@@ -5,6 +5,50 @@ import { logger } from './log.js';
 const log = logger('claude');
 
 /**
+ * Parse a stream-json event and log interesting activity.
+ * Returns extracted text if the event contains assistant text content.
+ */
+function processEvent(event) {
+  if (event.type === 'system' && event.subtype === 'init') {
+    log.debug(`Session initialized (${event.tools?.length || 0} tools)`);
+    return null;
+  }
+
+  if (event.type === 'assistant' && event.message?.content) {
+    for (const block of event.message.content) {
+      if (block.type === 'tool_use') {
+        const input = JSON.stringify(block.input || {});
+        log.debug(`Tool call: ${block.name} ${input.slice(0, 200)}${input.length > 200 ? '...' : ''}`);
+      }
+      if (block.type === 'text' && block.text) {
+        return block.text;
+      }
+    }
+  }
+
+  if (event.type === 'user' && event.message?.content) {
+    for (const block of event.message.content) {
+      if (block.type === 'tool_result') {
+        const preview = typeof block.content === 'string'
+          ? block.content.slice(0, 150)
+          : JSON.stringify(block.content)?.slice(0, 150);
+        log.debug(`Tool result: ${preview}${(preview?.length || 0) >= 150 ? '...' : ''}`);
+      }
+    }
+  }
+
+  if (event.type === 'result') {
+    const parts = [];
+    if (event.num_turns != null) parts.push(`${event.num_turns} turns`);
+    if (event.cost_usd != null) parts.push(`$${event.cost_usd.toFixed(4)}`);
+    if (parts.length) log.debug(`Result: ${event.subtype} (${parts.join(', ')})`);
+    return event.result || null;
+  }
+
+  return null;
+}
+
+/**
  * Run claude -p with a message, optionally within a session.
  *
  * @param {string} message - The user's message
@@ -17,7 +61,8 @@ const log = logger('claude');
 export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
   const args = [
     '-p', message,
-    '--output-format', 'json',
+    '--output-format', 'stream-json',
+    '--verbose',
     '--dangerously-skip-permissions',
   ];
 
@@ -41,7 +86,7 @@ export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
   ];
   env.PATH = [...extraPaths, env.PATH].join(':');
 
-  log.debug(`Spawning: claude ${args.join(' ').slice(0, 120)}...`);
+  log.debug(`Spawning: claude ${args.join(' ')}`);
 
   return new Promise((resolve, reject) => {
     const child = spawn('claude', args, {
@@ -50,11 +95,43 @@ export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    let stdout = '';
+    let stdoutBuf = '';
     let stderr = '';
+    let resultText = '';     // accumulated assistant text
+    let finalResult = null;  // from result event
 
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.stdout.on('data', (chunk) => {
+      stdoutBuf += chunk;
+
+      // Process complete lines (NDJSON)
+      let newlineIdx;
+      while ((newlineIdx = stdoutBuf.indexOf('\n')) !== -1) {
+        const line = stdoutBuf.slice(0, newlineIdx).trim();
+        stdoutBuf = stdoutBuf.slice(newlineIdx + 1);
+        if (!line) continue;
+
+        try {
+          const event = JSON.parse(line);
+          const text = processEvent(event);
+          if (text) {
+            if (event.type === 'result') {
+              finalResult = text;
+            } else {
+              resultText = text; // last assistant text wins
+            }
+          }
+        } catch {
+          log.debug(`[stdout] ${line.slice(0, 200)}`);
+        }
+      }
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+      for (const line of chunk.toString().split('\n')) {
+        if (line.trim()) log.debug(`[stderr] ${line}`);
+      }
+    });
 
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
@@ -65,22 +142,15 @@ export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
       clearTimeout(timer);
 
       log.debug(`Process exited with code ${code}`);
-      if (stderr) log.debug(`stderr: ${stderr.slice(0, 200)}`);
 
-      if (code !== 0 && !stdout) {
+      if (code !== 0 && !resultText && !finalResult) {
         reject(new Error(`Claude exited with code ${code}: ${stderr}`));
         return;
       }
 
-      // Try to parse JSON output
-      try {
-        const parsed = JSON.parse(stdout);
-        // --output-format json returns { result: "..." } or similar
-        resolve(parsed.result || parsed.text || parsed.content || JSON.stringify(parsed));
-      } catch {
-        // Fall back to raw text
-        resolve(stdout.trim() || stderr.trim() || 'No response from Claude.');
-      }
+      const result = finalResult || resultText || 'No response from Claude.';
+      log.debug(`Response (${result.length} chars): ${result.slice(0, 300)}${result.length > 300 ? '...' : ''}`);
+      resolve(result);
     });
 
     child.on('error', (err) => {
