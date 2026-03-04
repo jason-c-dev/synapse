@@ -32,6 +32,24 @@ Telegram message
 
 Sessions persist throughout the day (or a configurable window), so Claude remembers earlier messages. When a session expires, Claude does a final reconciliation pass — reviewing the conversation, capturing anything missed, and appending a summary to your daily note.
 
+## Quick Start
+
+Have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed? Run the setup wizard:
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/jason-c-dev/synapse/main/install.sh)
+```
+
+The wizard detects your environment, installs dependencies, and walks you through configuration interactively. Safe to re-run for repairs and updates.
+
+Already cloned the repo? Run it locally:
+
+```bash
+claude "$(cat setup.md)"
+```
+
+For manual setup, see [Prerequisites](#prerequisites) below.
+
 ## Prerequisites
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
