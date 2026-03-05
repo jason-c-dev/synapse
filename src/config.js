@@ -46,7 +46,7 @@ export const config = {
   botToken: process.env.BOT_TOKEN,
   allowedUserIds: process.env.ALLOWED_USER_IDS.split(',').map(id => Number(id.trim())),
   sessionExpiry,
-  claudeTimeout: Number(process.env.CLAUDE_TIMEOUT) || 120_000,
+  claudeTimeout: Number(process.env.CLAUDE_TIMEOUT) || 300_000,
   projectDir: resolve(import.meta.dirname, '..'),
   vaultPath: process.env.VAULT_PATH || null,
   imageTempDir: process.env.IMAGE_TEMP_DIR || join(tmpdir(), 'telegram-second-brain'),

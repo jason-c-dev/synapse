@@ -1,36 +1,97 @@
 # Synapse
 
-Your second brain, in your pocket.
+An extensible base agent you can build on.
 
-Synapse connects your Obsidian vault to Telegram through Claude, giving you a conversational interface to your entire knowledge base from your phone. Capture thoughts on the go, search your notes by asking questions, snap photos of receipts or whiteboards and file them into the right place — all through a chat that understands what you mean, not just what you type.
+<table><tr>
+<td width="300">
+  <img src="assets/telegram.png" alt="Telegram" width="300"><br>
+  <img src="assets/claude.jpg" alt="Claude Code" width="300"><br>
+  <img src="assets/synapse.gif" alt="Synapse vault graph growing as notes are created and linked" width="300">
+</td>
+<td valign="top">
 
-Built on three pieces that work together:
-- **[Obsidian](https://obsidian.md)** — your vault, the source of truth
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — the AI that reads, writes, and reasons about your notes
-- **[Obsidian MCP Server](https://github.com/jason-c-dev/obsidian-mcp)** — the bridge that gives Claude direct access to your vault via 16 MCP tools
+Synapse is an extensible agent platform that combines four things into a simple but powerful base: **Claude Code** for AI reasoning, **Obsidian** as a persistent memory layer (via 16 MCP tools), **Telegram** as a conversational interface, and **session management** that gives the agent continuity across messages. Together, these form a foundation that handles the hard parts — streaming, auth, message queuing, progress feedback, reconciliation — so you can focus on what your agent actually does.
 
-## Why This Exists
+What makes each agent distinct is its **behavior layer**: a `CLAUDE.md` system prompt that defines how the agent thinks, a set of skills that define what it can do, and optionally additional MCPs that extend its capabilities. Swap these out and you have a different agent backed by the same platform.
 
-Most "AI + notes" tools bolt a chatbot onto a search index. Synapse is different — Claude doesn't just search your vault, it **writes to it**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
+Out of the box, Synapse ships as a **second brain** — a vault assistant you talk to from your phone that captures thoughts, searches your notes, manages tasks, files photos, and maintains your knowledge graph. But the architecture is designed for much more.
 
-The session system means Claude remembers your earlier messages throughout the day. Ask it to capture something in the morning, then reference it in the afternoon — it knows. When the session ends, Claude does a reconciliation pass: reviewing the conversation, capturing anything missed, and writing a summary to your daily note. Nothing falls through the cracks.
-
-And because it runs on your machine through Claude Code, there's no middleware — no extra SaaS layer, no third-party database, no additional cloud service sitting between you and your notes. Your vault, your bot, your Claude account. You control the entire pipeline.
+</td>
+</tr></table>
 
 ## How It Works
 
-```
-Telegram message
-  → Telegraf bot (long polling)
-    → Message queue (per-user, sequential)
-      → claude -p "your message" --output-format stream-json
-        → Tool call events streamed to Telegram as progress updates
-        → Claude calls MCP tools to read/write vault
-      → Response formatted for Telegram
-    → Reply sent back
+```mermaid
+flowchart TB
+  A["📱 Telegram"] -->|message| B[Telegraf Bot]
+  B -->|auth + queue| C[Session Manager]
+  C -->|"session ID"| D["claude -p"]
+  D -->|MCP calls| E[obsidian-mcp]
+  E -->|read/write| F["🗃️ Obsidian Vault"]
+  D -.->|stream events| G[Progress Reporter]
+  G -.->|edit status msg| A
+  D -->|response| H[Formatter]
+  H -->|reply| A
 ```
 
 Sessions persist throughout the day (or a configurable window), so Claude remembers earlier messages. When a session expires, Claude does a final reconciliation pass — reviewing the conversation, capturing anything missed, and appending a summary to your daily note.
+
+## Building on Synapse
+
+Synapse provides the runtime. Your agent provides the brain.
+
+Three customization points:
+
+- **CLAUDE.md** — the system prompt. Defines how the agent interprets messages, what conventions it follows, what domain knowledge it brings
+- **Skills** (`.claude/skills/`) — the command set. Domain-specific actions the agent can perform
+- **Additional MCPs** — extend the agent's capabilities beyond the vault (a fitness API, a calendar service, GitHub integration — whatever it needs)
+
+```mermaid
+flowchart TB
+  subgraph Behavior["Behavior layer (customize this)"]
+    A[CLAUDE.md — system prompt + conventions]
+    B[.claude/skills/ — domain commands]
+    C[Additional MCPs — extend capabilities]
+  end
+  subgraph Synapse["Synapse platform (keep this)"]
+    D[Telegram — auth, commands, queue]
+    E[Claude Code — AI reasoning + streaming]
+    F[Obsidian — persistent memory via MCP]
+    G[Sessions — daily lifecycle + reconciliation]
+    H[Progress — real-time feedback]
+  end
+  Behavior --> Synapse
+```
+
+Examples of what you could build:
+
+- A **fitness tracker** — CLAUDE.md for workout logging conventions, skills for `/workout` and `/progress`, a fitness API MCP
+- A **recipe assistant** — CLAUDE.md for recipe formatting, skills for `/recipe` and `/meal-plan`
+- A **project manager** — CLAUDE.md for project tracking, skills for `/sprint` and `/standup`, GitHub MCP for issue integration
+- A **reading log** — CLAUDE.md for book note conventions, skills for `/reading` and `/review`
+
+Fork the repo, replace CLAUDE.md and the skills directory, optionally register additional MCPs, and you have a new agent with different expertise backed by the same platform.
+
+## The Default Agent: Second Brain
+
+The bundled CLAUDE.md and skills turn Synapse into a conversational interface to your Obsidian vault. Claude doesn't just search your notes — it **writes to them**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
+
+And because it runs on your machine through Claude Code, there's no middleware — no extra SaaS layer, no third-party database, no additional cloud service sitting between you and your notes. Your vault, your bot, your Claude account.
+
+Send messages to your bot on Telegram:
+
+- **"what's on my plate today?"** — reads your daily note and outstanding tasks
+- **"capture: interesting idea about X"** — appends a timestamped entry to today's daily note
+- **"find: session management"** — deep search across your vault
+- **"log: finished the review"** — quick timestamped log entry
+- **"note: Meeting Notes — discussed project timeline"** — creates a new structured note
+- **Send a photo** with a caption — Claude sees the image, saves it to your vault, and files it into the right note
+- **Free-form text** — Claude uses judgment to search, capture, or act
+
+### Bot Commands
+
+- `/reset` — flush the current session (reconcile + capture missed items) and start fresh
+- `/status` — show current session info (ID, message count, last activity)
 
 ## Quick Start
 
@@ -132,30 +193,13 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `BOT_TOKEN` | Yes | — | Telegram bot token from BotFather |
 | `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the bot |
 | `SESSION_EXPIRY` | No | `daily` | `"daily"` for day-based sessions, or a number for minutes |
-| `CLAUDE_TIMEOUT` | No | `120000` | Max milliseconds to wait for Claude to respond |
+| `CLAUDE_TIMEOUT` | No | `300000` | Max milliseconds to wait for Claude to respond |
 | `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo support |
 | `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
 | `PROGRESS_MODE` | No | `off` | Progress feedback during Claude processing: `off` (typing indicator only), `standard` (acknowledgment + generic activity labels), `detailed` (tool names, inputs, and cost summary) |
 | `QUEUE_DEPTH` | No | `3` | Maximum queued messages per user. Messages beyond this limit are rejected |
 | `LOG_LEVEL` | No | `info` | Logging verbosity: `error`, `warn`, `info`, or `debug` |
 | `LOG_FILE` | No | — | Path to a log file. When set, all output is appended here in addition to the console |
-
-## Usage
-
-Send messages to your bot on Telegram. It understands natural language and maps your intent to vault operations:
-
-- **"what's on my plate today?"** — reads your daily note and outstanding tasks
-- **"capture: interesting idea about X"** — appends a timestamped entry to today's daily note
-- **"find: session management"** — deep search across your vault
-- **"log: finished the review"** — quick timestamped log entry
-- **"note: Meeting Notes — discussed project timeline"** — creates a new structured note
-- **Send a photo** with a caption — Claude sees the image, saves it to your vault, and files it into the right note
-- **Free-form text** — Claude uses judgment to search, capture, or act
-
-### Bot Commands
-
-- `/reset` — flush the current session (reconcile + capture missed items) and start fresh
-- `/status` — show current session info (ID, message count, last activity)
 
 ## Session Management
 
@@ -165,6 +209,16 @@ Sessions give Claude conversational memory across messages:
 - **Subsequent messages** resume the same session, so Claude remembers context
 - **Session expiry** triggers a reconciliation pass where Claude reviews the conversation, captures anything missed, and writes a summary to your daily note
 - **`/reset`** manually triggers a flush and starts a new session
+
+```mermaid
+stateDiagram-v2
+  [*] --> New: first message of day
+  New --> Active: session created
+  Active --> Active: subsequent messages
+  Active --> Flush: day ends or /reset
+  Flush --> [*]: reconciliation complete
+  note right of Flush: Claude reviews conversation,\ncaptures missed items,\nwrites daily summary
+```
 
 ## Project Structure
 

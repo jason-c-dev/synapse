@@ -16,9 +16,9 @@ everything needed.
 - Keep the conversation concise — status updates, not essays
 
 <!-- ═════════════════════════════════════════════════════════════════════ -->
-<!-- ═══ FOUNDATION ═══                                                    -->
+<!-- ═══ PREREQUISITES ═══                                                 -->
 <!-- Steps 1-6: Node, git, Obsidian, vault, obsidian-mcp, MCP registration -->
-<!-- Shared by all Obsidian + Claude bots                                  -->
+<!-- Required tools and services that Synapse depends on                    -->
 <!-- ═════════════════════════════════════════════════════════════════════ -->
 
 ## Phase 1 — Gather
@@ -224,7 +224,7 @@ different bots or projects to target different vaults.
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- ═══ SYNAPSE ═══                                                     -->
 <!-- Steps 7-11: Telegram, clone Synapse, .env, verify, launch           -->
-<!-- Replace this section for derived bots                               -->
+<!-- Synapse-specific setup: bot token, install, configure, run          -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 
 ### Step 7: Telegram bot setup
@@ -270,7 +270,7 @@ This is a manual step — guide the user through it conversationally.
 BOT_TOKEN=<from step 7>
 ALLOWED_USER_IDS=<from step 7>
 SESSION_EXPIRY=daily
-CLAUDE_TIMEOUT=120000
+CLAUDE_TIMEOUT=300000
 VAULT_PATH=<vault path from step 4>
 PROGRESS_MODE=<user preference, default: standard>
 # QUEUE_DEPTH=3
