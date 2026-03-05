@@ -246,6 +246,8 @@ flowchart TB
 
 The bot generates a descriptive filename (`telegram-YYYY-MM-DD-abcd1234.jpg`) and constructs a prompt telling Claude the image is saved as `![[filename]]` and available at the temp path for visual analysis. Claude then decides what to do based on the caption — append to daily note, create a new note, add to an existing note, etc.
 
+Why not use the MCP server's `vault_attachment` tool and let Claude handle everything? Because that would require base64-encoding the image into Claude's prompt, bloating context with kilobytes of encoded data on every photo. Instead, the bot saves the file directly to the vault and passes a temp copy via `--add-dir` so Claude can see the image without the base64 overhead. Claude gets the visual content, the vault gets the file, and the context window stays clean.
+
 The temp copy exists only for the duration of Claude's processing. The `onComplete` callback in `processOrQueue` deletes it after Claude responds, so `IMAGE_TEMP_DIR` stays clean. The vault copy is permanent.
 
 ## Voice Handling
