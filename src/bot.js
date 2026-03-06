@@ -307,6 +307,78 @@ bot.on('photo', async (ctx) => {
   }
 });
 
+// Document handler — save file to vault + temp dir, let Claude see it via --add-dir
+bot.on('document', async (ctx) => {
+  if (!config.vaultPath) {
+    return ctx.reply('File support requires VAULT_PATH in .env');
+  }
+
+  const doc = ctx.message.document;
+  const caption = ctx.message.caption || 'The user sent a file with no caption. Ask what they want to do with it.';
+
+  // Telegram Bot API caps file downloads at 20MB
+  if (doc.file_size && doc.file_size > 20 * 1024 * 1024) {
+    return ctx.reply('That file is too large — the Telegram Bot API limits downloads to 20MB. Try sharing it as a cloud link instead.');
+  }
+
+  try {
+    const file = await ctx.telegram.getFile(doc.file_id);
+    const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to download file: ${res.status}`);
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    // Preserve original filename with date prefix to avoid collisions
+    const date = new Date().toISOString().slice(0, 10);
+    const originalName = doc.file_name || `${randomUUID().slice(0, 8)}.bin`;
+    const filename = `telegram-${date}-${originalName}`;
+
+    // Verify the vault path exists
+    if (!existsSync(config.vaultPath)) {
+      return ctx.reply(
+        `Vault path does not exist: ${config.vaultPath}\n\nCheck VAULT_PATH in your .env file.`
+      );
+    }
+
+    // Save to vault attachments folder
+    const attachDir = join(config.vaultPath, 'attachments');
+    mkdirSync(attachDir, { recursive: true });
+    writeFileSync(join(attachDir, filename), buffer);
+
+    // Save a copy to temp dir so Claude can read the file via --add-dir
+    mkdirSync(config.imageTempDir, { recursive: true });
+    const tempPath = join(config.imageTempDir, filename);
+    writeFileSync(tempPath, buffer);
+
+    log.info(`Saved document ${filename} (${Math.round(buffer.length / 1024)}KB) to vault + temp`);
+
+    const message = [
+      `The user sent a file: "${originalName}". It has been saved to the vault as ![[${filename}]].`,
+      `A copy is at ${tempPath} — read this file to see its contents.`,
+      `The user's message: "${caption}"`,
+      `Act on their request — create or update the appropriate note with the file embedded using ![[${filename}]].`,
+    ].join('\n');
+
+    await processOrQueue(ctx, message, {
+      addDirs: [config.imageTempDir],
+      onComplete: () => {
+        try { unlinkSync(tempPath); } catch {}
+      },
+    });
+  } catch (err) {
+    log.error('Document processing failed:', err);
+    if (err.code === 'EACCES' || err.code === 'EPERM') {
+      await ctx.reply(
+        `Permission denied writing to the vault. Check that VAULT_PATH in .env is correct and writable.\n\nCurrent path: ${config.vaultPath}`
+      );
+    } else {
+      await ctx.reply('Failed to process the file: ' + err.message);
+    }
+  }
+});
+
 // Voice handler — transcribe and process as text
 bot.on('voice', async (ctx) => {
   if (!config.sttModel) {
