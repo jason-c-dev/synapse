@@ -10,7 +10,7 @@ An extensible base agent you can build on.
 </td>
 <td valign="top">
 
-Synapse is an extensible agent platform that combines four things into a simple but powerful base: **Claude Code** for AI reasoning, **Obsidian** as a persistent memory layer (via 16 MCP tools), **Telegram** as a conversational interface, and **session management** that gives the agent continuity across messages. Together, these form a foundation that handles the hard parts — streaming, auth, message queuing, progress feedback, reconciliation — so you can focus on what your agent actually does.
+Synapse is an extensible agent platform that combines four things into a simple but powerful base: **Claude Code** for AI reasoning, **a markdown vault** as a persistent memory layer (via 16 MCP tools), **Telegram** as a conversational interface, and **session management** that gives the agent continuity across messages. Together, these form a foundation that handles the hard parts — streaming, auth, message queuing, progress feedback, reconciliation — so you can focus on what your agent actually does.
 
 What makes each agent distinct is its **behavior layer**: an `agent.md` file that defines how the agent thinks, a set of skills that define what it can do, and optionally additional MCPs that extend its capabilities. Swap these out and you have a different agent backed by the same platform.
 
@@ -29,8 +29,8 @@ flowchart TB
   B -->|auth + queue| C[Session Lock]
   I <-->|auth| C
   C -->|"session ID"| D["claude -p"]
-  D -->|MCP calls| E[obsidian-mcp]
-  E -->|read/write| F["🗃️ Obsidian Vault"]
+  D -->|MCP calls| E[vault-mcp]
+  E -->|read/write| F["🗃️ Vault (.md files)"]
   D -.->|stream events| G[Progress Reporter]
   G -.->|edit status msg| A
   D -->|response| H[Formatter]
@@ -120,14 +120,17 @@ For manual setup, see [Prerequisites](#prerequisites) below.
 
 ## Prerequisites
 
+**Native install:**
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- [Obsidian MCP Server](https://github.com/jason-c-dev/obsidian-mcp) configured in your Claude Code global settings
+- [Vault MCP Server](https://github.com/jason-c-dev/obsidian-mcp) configured in your Claude Code project settings
 - Node.js 20+
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - Your Telegram user ID (from [@userinfobot](https://t.me/userinfobot))
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) + ffmpeg (optional, for voice messages) — `brew install whisper-cpp ffmpeg`
 - [pipx](https://pipx.pypa.io/) (optional, for Piper TTS) — `brew install pipx` (macOS) or `apt install pipx` (Linux)
 - [Piper TTS](https://github.com/rhasspy/piper) (optional, for voice replies) — `pipx install piper-tts`
+
+**Docker:** Docker + an `ANTHROPIC_API_KEY`. See [Docker Deployment](#docker-deployment).
 
 ## Telegram Setup
 
@@ -204,7 +207,8 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the agent |
 | `SESSION_EXPIRY` | No | `daily` | `"daily"` for day-based sessions, or a number for minutes |
 | `CLAUDE_TIMEOUT` | No | `300000` | Max milliseconds to wait for Claude to respond |
-| `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo and file attachment support |
+| `VAULT_PATH` | For images | — | Absolute path to your vault directory. Required for photo and file attachment support |
+| `ANTHROPIC_API_KEY` | Docker only | — | Anthropic API key. Required for Docker deployment (native installs use Claude Code login) |
 | `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
 | `PROGRESS_MODE` | No | `off` | Progress feedback during Claude processing: `off` (typing indicator only), `standard` (acknowledgment + generic activity labels), `detailed` (tool names, inputs, and cost summary) |
 | `QUEUE_DEPTH` | No | `3` | Maximum queued messages per user. Messages beyond this limit are rejected |
@@ -412,6 +416,59 @@ Add to `.env` and restart:
 TTS_MODEL=~/.piper/models/en_US-amy-medium.onnx
 ```
 
+## Vault Engine
+
+Synapse includes a filesystem-native vault engine ([obsidian-mcp](https://github.com/jason-c-dev/obsidian-mcp)) that implements Obsidian's conventions — wikilinks, daily notes, YAML frontmatter, tags, tasks, backlinks — directly on standard markdown files. It requires no Obsidian installation and runs anywhere Node.js runs: macOS, Linux, Docker, headless servers.
+
+The vault folder is **fully compatible with Obsidian.app**. On a desktop environment, open the same folder in Obsidian and all notes, links, and metadata work as expected. The engine reads Obsidian's configuration (daily note folder, etc.) when present but operates independently.
+
+`OBSIDIAN_VAULT` is set to the **filesystem path** of your vault directory (e.g., `/Users/you/my-vault` or `/vault` in Docker).
+
+## Docker Deployment
+
+Synapse can run as a self-contained Docker container — no Obsidian desktop app required.
+
+```
++---- Docker container ----------------+
+|                                       |
+|  Synapse bot (Node.js + Telegraf)     |
+|    → spawns claude -p                 |
+|        → spawns vault-mcp (stdio)     |
+|            → reads/writes /vault/*.md |
+|                                       |
++---------------------------------------+
+         |
+    /vault (bind mount)
+    - macOS: ~/my-vault or Obsidian folder
+    - AWS: EBS volume or EFS
+```
+
+### Quick start
+
+```bash
+# Clone with submodule
+git clone --recurse-submodules https://github.com/jason-c-dev/synapse.git
+cd synapse
+
+# Configure
+cp .env.example .env
+# Edit .env: set BOT_TOKEN, ALLOWED_USER_IDS, ANTHROPIC_API_KEY
+
+# Run (VAULT_PATH points to your vault on the host)
+VAULT_PATH=~/my-vault docker compose up -d
+```
+
+### Volumes
+
+- `/vault` — your markdown vault (bind mount from host)
+- `.sessions` — Synapse session state (named volume)
+- `~/.claude` — Claude Code sessions/cache (named volume)
+
+### Requirements
+
+- `ANTHROPIC_API_KEY` in `.env` (Docker can't use native Claude Code login)
+- A vault directory on the host (or an EBS/EFS volume on AWS)
+
 ## Project Structure
 
 ```
@@ -419,6 +476,9 @@ TTS_MODEL=~/.piper/models/en_US-amy-medium.onnx
 ├── agent.md           # Agent: identity, message handling, domain logic
 ├── .env.example       # Environment variable template
 ├── package.json       # ESM, single dependency (telegraf)
+├── Dockerfile         # Container build (Node.js + Claude CLI + vault-mcp)
+├── docker-compose.yml # Container orchestration with vault volume
+├── obsidian-mcp/      # Git submodule: filesystem vault engine (16 MCP tools)
 ├── src/
 │   ├── agent.js       # Entry point: Telegraf, auth, commands, message handler
 │   ├── api.js         # HTTP API server for agent-to-agent messaging
@@ -467,7 +527,7 @@ This is a deliberate choice:
 
 ## Related
 
-- [Obsidian MCP Server](https://github.com/jason-c-dev/obsidian-mcp) — the MCP server that gives Claude access to your vault
+- [Vault MCP Server](https://github.com/jason-c-dev/obsidian-mcp) — filesystem vault engine with 16 MCP tools (Obsidian-compatible)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — the CLI that powers the Claude invocations
 
 ## License

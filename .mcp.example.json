@@ -5,7 +5,7 @@
       "command": "node",
       "args": ["/path/to/obsidian-mcp/build/index.js"],
       "env": {
-        "OBSIDIAN_VAULT": "your vault name"
+        "OBSIDIAN_VAULT": "/path/to/your/vault"
       }
     }
   }

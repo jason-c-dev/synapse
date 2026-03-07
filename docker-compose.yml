@@ -1,0 +1,16 @@
+services:
+  synapse:
+    build: .
+    env_file: .env
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - VAULT_PATH=/vault
+    volumes:
+      - ${VAULT_PATH:-./.vault}:/vault
+      - synapse-sessions:/app/synapse/.sessions
+      - claude-data:/root/.claude
+    restart: unless-stopped
+
+volumes:
+  synapse-sessions:
+  claude-data:

@@ -61,9 +61,7 @@ Run each of these and record the result:
 |--------------------|---------------------------------------------------------------------|---------------------------|
 | Node.js            | `node --version`                                                    | Major >= 20               |
 | git                | `git --version`                                                     | Present                   |
-| Obsidian app       | macOS: `ls /Applications/Obsidian.app`; Linux: `which obsidian`     | Found                     |
-| Obsidian CLI path  | macOS: `/Applications/Obsidian.app/Contents/MacOS/obsidian`         | Binary exists             |
-| Obsidian running   | macOS: `pgrep -x Obsidian`; Linux: `pgrep -f obsidian`              | Running                   |
+| Obsidian app       | macOS: `ls /Applications/Obsidian.app`; Linux: `which obsidian`     | Optional (not required)   |
 | obsidian-mcp       | `ls <install_dir>/obsidian-mcp/build/index.js`                      | Built artifact exists     |
 | MCP registered     | `claude mcp list` — look for "obsidian"                             | Present                   |
 | Synapse cloned     | `ls <install_dir>/synapse/package.json`                             | Exists                    |
@@ -95,15 +93,14 @@ in one go rather than asking one at a time.
 
 - **Install directory** — where to clone repos (default: current working
   directory). Skip if running from inside an existing clone.
-- **Obsidian vault** — which vault to use. Detect available vaults from
-  Obsidian's config file:
+- **Vault path** — filesystem path to the vault directory. If Obsidian is
+  installed, detect available vaults from its config:
   - macOS: `~/Library/Application Support/obsidian/obsidian.json`
   - Linux: `~/.config/obsidian/obsidian.json`
 
   The file contains a `vaults` object keyed by vault ID, each with a `path`.
-  List vault names (directory basename of each path) and let the user choose.
-  If only one vault exists, confirm it. If no vaults exist, guide the user to
-  create one in Obsidian first, then re-detect.
+  List vault names and let the user choose, or enter a custom path.
+  If Obsidian is not installed, ask for the path directly.
 - **Telegram bot token** — guide to @BotFather if they don't have one (details
   in Phase 2, Step 7). For now just ask if they have one ready.
 - **Telegram user ID** — guide to @userinfobot if they don't know it.
@@ -176,25 +173,28 @@ Each step follows the pattern: **check → skip if done → act → verify**.
   - Linux: `sudo apt install git` / `sudo dnf install git` / `sudo pacman -S git`
 - Skip if present
 
-### Step 3: Obsidian
+### Step 3: Obsidian (optional)
 
-- Cannot automate app installation. Tell the user:
-  "Download and install Obsidian from https://obsidian.md/download"
-- Wait for user to confirm they've installed it
-- Check it's running: `pgrep -x Obsidian` (macOS) or `pgrep -f obsidian` (Linux)
-- If not running, ask the user to open it — the MCP server requires Obsidian running
-- Skip if already installed and running
+Obsidian.app is **not required** — the vault engine works directly on `.md` files.
+If Obsidian is installed, detect its vaults for convenience. If not, skip.
+
+- Check: macOS: `ls /Applications/Obsidian.app`; Linux: `which obsidian`
+- If installed: note it and use its vault config in Step 4
+- If not installed: "Obsidian is not required. You can use any folder of markdown
+  files as your vault." Then skip to Step 4's manual vault path prompt.
 
 ### Step 4: Vault selection
 
-- Read Obsidian's config to list vaults:
+- If Obsidian is installed, try reading its config for known vaults:
   - macOS: `~/Library/Application Support/obsidian/obsidian.json`
   - Linux: `~/.config/obsidian/obsidian.json`
-- Parse the `vaults` object — each entry has a `path` field
-- If no vaults: guide user to create one in Obsidian, wait, re-detect
-- If one vault: confirm with user
-- If multiple: let user choose
-- Record the vault **name** (directory basename) and **path** for later steps
+  - Parse the `vaults` object — each entry has a `path` field
+  - If vaults found: list them and let user choose, or enter a custom path
+- If Obsidian is not installed or no vaults found:
+  - Ask for the vault path directly: "Enter the path to your vault directory
+    (a folder of markdown files):"
+  - If the path doesn't exist, offer to create it
+- Record the vault **path** for later steps
 
 ### Step 5: Clone + build obsidian-mcp
 
@@ -217,19 +217,19 @@ The MCP server must be registered at **project scope** (`-s project`) so the
 `OBSIDIAN_VAULT` env var is scoped to this Synapse installation. This allows
 different agents or projects to target different vaults.
 
+`OBSIDIAN_VAULT` is set to the **filesystem path** of the vault directory (not a
+vault name). The vault engine operates directly on `.md` files — no Obsidian app
+required.
+
 - Check: `claude mcp list` for an entry named "obsidian"
   - If it exists at global/user scope but not project scope, note it but still
     register at project scope (project scope takes precedence)
   - If it exists at project scope with correct paths and vault, skip
-- Determine the Obsidian CLI directory:
-  - macOS: `/Applications/Obsidian.app/Contents/MacOS`
-  - Linux: the directory containing the `obsidian` binary (from `which obsidian`)
 - The `claude mcp add` command must be run from the Synapse project directory
   for `-s project` to target the right `.claude/settings.json`:
   ```bash
   cd <synapse_dir> && claude mcp add --transport stdio -s project obsidian \
-    -e PATH="<obsidian_cli_dir>:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin" \
-    -e OBSIDIAN_VAULT="<vault_name>" \
+    -e OBSIDIAN_VAULT="<vault_path>" \
     -- node <mcp_dir>/build/index.js
   ```
 - If registered at project scope but paths are wrong:
@@ -237,7 +237,7 @@ different agents or projects to target different vaults.
   cd <synapse_dir> && claude mcp remove -s project obsidian
   ```
   Then re-add with correct paths.
-- Verify: `claude mcp list` shows obsidian with correct vault name
+- Verify: `claude mcp list` shows obsidian with correct vault path
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- ═══ SYNAPSE ═══                                                     -->
@@ -451,8 +451,8 @@ Common failures and how to diagnose them:
 
 | Symptom                          | Likely cause              | Fix                                              |
 |----------------------------------|---------------------------|---------------------------------------------------|
-| `obsidian: command not found`    | CLI not on PATH           | Find binary path, fix PATH in MCP `-e` flag       |
-| `ENOENT` from MCP tools         | Obsidian app not running  | Ask user to open Obsidian                          |
+| `OBSIDIAN_VAULT env var not set` | Missing env in MCP config | Re-run Step 6 with correct vault path              |
+| `Vault path does not exist`     | Wrong OBSIDIAN_VAULT path | Check vault path exists, fix in MCP `-e` flag      |
 | `npm install` EACCES            | Permission issue          | `sudo chown -R $(whoami) ~/.npm` or use nvm        |
 | `claude mcp list` shows nothing | MCP not registered        | Re-run Step 6                                      |
 | `claude -p` shows "no tools"    | MCP registered wrong scope| Remove and re-add with `-s project` from synapse dir|
