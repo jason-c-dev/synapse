@@ -1,0 +1,3 @@
+[submodule "obsidian-mcp"]
+	path = obsidian-mcp
+	url = https://github.com/jason-c-dev/obsidian-mcp.git

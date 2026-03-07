@@ -104,7 +104,7 @@ export async function runClaude(message, { sessionId, resume, addDirs, onEvent }
   }
 
   const env = { ...process.env };
-  // Ensure claude and obsidian CLI are findable
+  // Ensure claude CLI is findable
   const extraPaths = [
     '/usr/local/bin',
     '/opt/homebrew/bin',
