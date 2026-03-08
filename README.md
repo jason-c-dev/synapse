@@ -1,5 +1,7 @@
 # Synapse
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 An extensible base agent you can build on.
 
 <table><tr>
@@ -604,4 +606,4 @@ This is a deliberate choice:
 
 ## License
 
-MIT
+[MIT](LICENSE)
