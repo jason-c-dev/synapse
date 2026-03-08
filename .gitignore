@@ -5,3 +5,5 @@ node_modules/
 *.log
 .mcp.json
 .claude/settings.local.json
+.claude/skills/
+agent.md

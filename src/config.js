@@ -3,7 +3,10 @@ import { resolve, join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 
 function loadEnv() {
-  const envPath = resolve(import.meta.dirname, '..', '.env');
+  const projectDir = process.env.SYNAPSE_PROJECT_DIR
+    ? resolve(process.env.SYNAPSE_PROJECT_DIR)
+    : resolve(import.meta.dirname, '..');
+  const envPath = join(projectDir, '.env');
   let text;
   try {
     text = readFileSync(envPath, 'utf8');
@@ -47,7 +50,9 @@ export const config = {
   allowedUserIds: process.env.ALLOWED_USER_IDS.split(',').map(id => Number(id.trim())),
   sessionExpiry,
   claudeTimeout: Number(process.env.CLAUDE_TIMEOUT) || 300_000,
-  projectDir: resolve(import.meta.dirname, '..'),
+  projectDir: process.env.SYNAPSE_PROJECT_DIR
+    ? resolve(process.env.SYNAPSE_PROJECT_DIR)
+    : resolve(import.meta.dirname, '..'),
   vaultPath: process.env.VAULT_PATH || null,
   imageTempDir: process.env.IMAGE_TEMP_DIR || join(tmpdir(), 'telegram-second-brain'),
   sttPath: process.env.STT_PATH || 'whisper-cli',

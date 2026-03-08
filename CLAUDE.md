@@ -1,6 +1,6 @@
 # Synapse Platform
 
-> **Do not modify this file when building a custom agent.** Define your agent's behavior in `agent.md` instead. This file is maintained by the Synapse platform and will be updated with upstream changes.
+> **Do not modify this file when building a custom agent.** Define your agent's behavior in `agent.md` instead (copy `agent.example.md` as a starting point). This file is maintained by the Synapse platform and will be updated with upstream changes.
 
 Synapse is an extensible agent platform. This file defines the platform layer — the MCP tools available, vault conventions, response formatting rules, and tool patterns that all agents inherit. The agent's identity, personality, and domain logic are defined in `agent.md`.
 

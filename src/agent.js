@@ -11,6 +11,7 @@ import { startProcessing, doneProcessing, enqueue, isProcessing } from './queue.
 import { transcribe, checkTranscriptionDeps } from './transcribe.js';
 import { synthesize, checkTTSDeps } from './tts.js';
 import { startAPI } from './api.js';
+import { ensurePlatformSkills } from './setup-skills.js';
 import { logger } from './log.js';
 
 const log = logger('agent');
@@ -487,6 +488,9 @@ if (config.ttsModel) {
 } else {
   log.info('Text-to-speech disabled (TTS_MODEL not set)');
 }
+
+// Ensure platform skills are symlinked into .claude/skills/
+ensurePlatformSkills();
 
 // Launch
 agent.launch();

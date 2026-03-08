@@ -96,8 +96,10 @@ export async function runClaude(message, { sessionId, resume, addDirs, onEvent }
   }
 
   const agentMdPath = join(config.projectDir, 'agent.md');
-  if (existsSync(agentMdPath)) {
-    const agentPrompt = readFileSync(agentMdPath, 'utf8');
+  const agentExamplePath = join(config.projectDir, 'agent.example.md');
+  const agentFile = existsSync(agentMdPath) ? agentMdPath : existsSync(agentExamplePath) ? agentExamplePath : null;
+  if (agentFile) {
+    const agentPrompt = readFileSync(agentFile, 'utf8');
     if (agentPrompt.trim()) {
       args.push('--append-system-prompt', agentPrompt);
     }

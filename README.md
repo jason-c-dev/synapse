@@ -43,12 +43,17 @@ Sessions persist throughout the day (or a configurable window), so Claude rememb
 
 Synapse provides the runtime. Your agent provides the brain.
 
-The behavior layer is split into two files:
+The behavior layer is:
 
-- **`CLAUDE.md`** — the platform (don't modify). MCP tool definitions, vault conventions, response formatting rules, and tool patterns. Updated by upstream.
-- **`agent.md`** — your agent's identity (replace this). How the agent interprets messages, what domain knowledge it brings, what personality it has. Loaded at runtime via `--append-system-prompt`.
-- **`.claude/skills/`** — the command set. Domain-specific actions the agent can perform. Add new skills alongside platform skills.
-- **Additional MCPs** — extend the agent's capabilities beyond the vault (a fitness API, a calendar service, GitHub integration — whatever it needs)
+- **`agent.md`** — your agent's identity. How the agent interprets messages, what domain knowledge it brings, what personality it has. Loaded at runtime via `--append-system-prompt`.
+- **`.claude/skills/`** — the command set. Platform skills are symlinked in automatically; add your own domain-specific skills alongside them.
+- **Additional MCPs** — extend the agent's capabilities beyond the vault (a fitness API, a calendar service, GitHub integration — whatever it needs).
+
+The platform layer (don't modify) is:
+
+- **`CLAUDE.md`** — MCP tool definitions, vault conventions, response formatting rules, and tool patterns. Updated by upstream.
+- **`skills/`** — platform skills (capture, find, log, etc.). Symlinked into `.claude/skills/` at startup.
+- **`src/`** — the runtime (Telegram, sessions, Claude invocation, progress, etc.).
 
 ```mermaid
 flowchart TB
@@ -68,18 +73,69 @@ flowchart TB
   Behavior --> Synapse
 ```
 
-Examples of what you could build:
+### Creating Your Own Agent
+
+The recommended way to build on Synapse is as a **separate project** that consumes Synapse as a git submodule. Your agent is its own repo — Synapse is infrastructure.
+
+```bash
+# From the parent directory where you want to create your agent
+bash synapse/scripts/create-agent.sh my-agent
+```
+
+Or if you haven't cloned Synapse yet:
+
+```bash
+git clone https://github.com/jason-c-dev/synapse.git
+bash synapse/scripts/create-agent.sh my-agent
+```
+
+This creates a project like:
+
+```
+my-agent/                           # Your git repo
+├── agent.md                        # Your agent's identity (edit this)
+├── CLAUDE.md -> synapse/CLAUDE.md  # Platform instructions (symlink)
+├── .claude/skills/
+│   ├── capture -> ../../synapse/skills/capture   # Platform skill (symlink)
+│   ├── find -> ../../synapse/skills/find
+│   ├── ...
+│   └── workout/                    # Your custom skill (real dir)
+│       └── SKILL.md
+├── .env                            # Config + secrets (gitignored)
+├── .env.example
+├── package.json                    # Start scripts
+└── synapse/                        # Git submodule (platform)
+    ├── src/
+    ├── skills/
+    ├── CLAUDE.md
+    └── ...
+```
+
+Then:
+
+1. Edit `agent.md` — define your agent's identity and domain logic
+2. `cp .env.example .env` — add your bot token, vault path, etc.
+3. Add custom skills in `.claude/skills/` (real directories, not symlinks)
+4. `npm start`
+
+To update the platform: `cd synapse && git pull && npm install`. Your agent files are untouched.
+
+### What Goes Where
+
+- **Your agent repo** owns: `agent.md`, custom skills, custom MCPs, `.env`, `.sessions/`, `package.json`
+- **Synapse submodule** owns: `src/`, `skills/`, `CLAUDE.md`, `obsidian-mcp/`
+- Platform skills are symlinked from `synapse/skills/` into your `.claude/skills/` — the scaffold script sets this up, and Synapse auto-links any missing ones at startup
+
+### Examples
 
 - A **fitness tracker** — agent.md for workout logging conventions, skills for `/workout` and `/progress`, a fitness API MCP
 - A **recipe assistant** — agent.md for recipe formatting, skills for `/recipe` and `/meal-plan`
 - A **project manager** — agent.md for project tracking, skills for `/sprint` and `/standup`, GitHub MCP for issue integration
 - A **reading log** — agent.md for book note conventions, skills for `/reading` and `/review`
 
-Fork the repo, replace `agent.md` and add your skills, optionally register additional MCPs, and you have a new agent with different expertise backed by the same platform. Pull from upstream to get platform updates without conflicts.
-
 ## The Default Agent: Second Brain
 
-The bundled agent.md and skills turn Synapse into a conversational interface to your Obsidian vault. Claude doesn't just search your notes — it **writes to them**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
+The bundled `agent.example.md` and skills turn Synapse into a conversational interface to your Obsidian vault. Claude doesn't just search your notes — it **writes to them**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
 
 And because it runs on your machine through Claude Code, there's no middleware — no extra SaaS layer, no third-party database, no additional cloud service sitting between you and your notes. Your vault, your agent, your Claude account.
 
@@ -158,6 +214,8 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 
 ## Setup
 
+> **Building your own agent?** See [Creating Your Own Agent](#creating-your-own-agent) above for the recommended submodule approach. The steps below are for running Synapse standalone with the default agent.
+
 1. Clone the repo:
    ```bash
    git clone https://github.com/jason-c-dev/synapse.git
@@ -169,9 +227,10 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
    npm install
    ```
 
-3. Copy the example env and fill in your values:
+3. Copy the example env and agent template:
    ```bash
    cp .env.example .env
+   cp agent.example.md agent.md   # customize your agent's identity
    ```
 
 4. Verify Claude can reach your vault:
@@ -203,6 +262,7 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `SYNAPSE_PROJECT_DIR` | No | Synapse dir | Path to the agent project directory. Set this when running Synapse as a submodule so it reads `agent.md`, `.env`, and sessions from your agent project instead of its own directory. Must be set in the shell environment (not `.env`) |
 | `BOT_TOKEN` | Yes | — | Telegram bot token from BotFather |
 | `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the agent |
 | `SESSION_EXPIRY` | No | `daily` | `"daily"` for day-based sessions, or a number for minutes |
@@ -475,27 +535,35 @@ VAULT_PATH=~/my-vault docker compose up -d
 ## Project Structure
 
 ```
-├── CLAUDE.md          # Platform: MCP tools, vault conventions, formatting rules
-├── agent.md           # Agent: identity, message handling, domain logic
-├── .env.example       # Environment variable template
-├── package.json       # ESM, single dependency (telegraf)
-├── Dockerfile         # Container build (Node.js + Claude CLI + vault-mcp)
-├── docker-compose.yml # Container orchestration with vault volume
-├── obsidian-mcp/      # Git submodule: filesystem vault engine (16 MCP tools)
+├── CLAUDE.md            # Platform: MCP tools, vault conventions, formatting rules
+├── agent.example.md     # Example agent identity (copy to agent.md to customize)
+├── .env.example         # Environment variable template
+├── package.json         # ESM, single dependency (telegraf)
+├── Dockerfile           # Container build (Node.js + Claude CLI + vault-mcp)
+├── docker-compose.yml   # Container orchestration with vault volume
+├── obsidian-mcp/        # Git submodule: filesystem vault engine (16 MCP tools)
+├── skills/              # Platform skill definitions (symlinked into .claude/skills/ at startup)
+│   ├── capture/
+│   ├── find/
+│   ├── log/
+│   └── ...
+├── scripts/
+│   └── create-agent.sh  # Scaffold a new agent project
 ├── src/
-│   ├── agent.js       # Entry point: Telegraf, auth, commands, message handler
-│   ├── api.js         # HTTP API server for agent-to-agent messaging
-│   ├── claude.js      # Spawns claude -p with session management flags
-│   ├── session.js     # Session lifecycle: create, resume, expire, flush, lock
-│   ├── transcribe.js  # Speech-to-text pipeline (pluggable, default: whisper.cpp)
-│   ├── tts.js         # Text-to-speech pipeline (Piper TTS → OGG Opus)
-│   ├── config.js      # Env loading and validation
-│   ├── format.js      # Obsidian markdown → Telegram formatting, message splitting
-│   ├── progress.js    # Progress reporting: status messages, throttled edits, mode-aware formatting
-│   ├── queue.js       # Per-user message queue with depth limits
-│   └── log.js         # Leveled logger (error/warn/info/debug)
+│   ├── agent.js         # Entry point: Telegraf, auth, commands, message handler
+│   ├── api.js           # HTTP API server for agent-to-agent messaging
+│   ├── claude.js        # Spawns claude -p with session management flags
+│   ├── session.js       # Session lifecycle: create, resume, expire, flush, lock
+│   ├── setup-skills.js  # Symlinks platform skills into .claude/skills/ at startup
+│   ├── transcribe.js    # Speech-to-text pipeline (pluggable, default: whisper.cpp)
+│   ├── tts.js           # Text-to-speech pipeline (Piper TTS → OGG Opus)
+│   ├── config.js        # Env loading and validation (supports SYNAPSE_PROJECT_DIR)
+│   ├── format.js        # Obsidian markdown → Telegram formatting, message splitting
+│   ├── progress.js      # Progress reporting: status messages, throttled edits, mode-aware formatting
+│   ├── queue.js         # Per-user message queue with depth limits
+│   └── log.js           # Leveled logger (error/warn/info/debug)
 └── .claude/
-    └── skills/        # Claude Code skill definitions (capture, find, log, complete-tasks, edit, etc.)
+    └── skills/          # Runtime skill location (gitignored, auto-populated by symlinks)
 ```
 
 ## Why `claude -p` and Not the Agent SDK
@@ -525,6 +593,7 @@ This is a deliberate choice:
 - **Per-user message queue** — instead of rejecting messages while processing, queues them (up to `QUEUE_DEPTH`) and processes sequentially. Different users can process concurrently
 - **Voice transcription is pluggable** — `src/transcribe.js` defines a `transcribe(buffer, config)` interface with whisper.cpp as the default backend. Alternative engines (sherpa-onnx, etc.) can be added without touching the agent layer. Transcribed text feeds into the same message pipeline as typed text — no special routing
 - **Voice replies are length-aware** — when the user sends a voice memo and TTS is enabled, short responses (<=400 chars) are returned as voice only. Longer responses get a spoken summary of the first paragraph plus the full text. The agent decides based on response length, not Claude — no extra API call needed
+- **Separate project architecture** — agent developers work in their own git repo with Synapse as a submodule. `SYNAPSE_PROJECT_DIR` tells Synapse to read `agent.md`, `.env`, and sessions from the agent's directory. Platform skills are symlinked from `synapse/skills/` into `.claude/skills/` at startup. This keeps agent code and platform code in separate repos with independent version control
 - **Attachments bypass Claude's context** — photos and documents are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see the file without base64 bloating the prompt
 - **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` streams Claude's stderr in real-time and logs spawn args, response previews, and exit codes. `LOG_FILE` optionally writes all output to a file for `tail -f` debugging
 

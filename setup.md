@@ -276,6 +276,10 @@ This is a manual step — guide the user through it conversationally.
   cd <install_dir>/synapse && npm install
   ```
 - Verify: `ls <install_dir>/synapse/node_modules/telegraf` succeeds
+- If no `agent.md` exists, copy the template:
+  ```bash
+  cp <install_dir>/synapse/agent.example.md <install_dir>/synapse/agent.md
+  ```
 
 ### Step 9: Voice support (optional)
 
