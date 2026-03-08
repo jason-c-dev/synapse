@@ -1,5 +1,6 @@
 #!/bin/bash
-# Usage: ./synapse/scripts/create-agent.sh my-agent
+# Usage: bash <(curl -sL https://raw.githubusercontent.com/jason-c-dev/synapse/main/scripts/create-agent.sh) my-agent
+#    or: bash synapse/scripts/create-agent.sh my-agent
 
 set -e
 AGENT_DIR="${1:?Usage: create-agent.sh <agent-name>}"
@@ -58,7 +59,8 @@ echo ""
 echo "Agent project created: $AGENT_DIR"
 echo ""
 echo "Next steps:"
-echo "  1. Edit agent.md — define your agent's identity"
-echo "  2. cp .env.example .env — add your bot token and vault path"
-echo "  3. Add custom skills in .claude/skills/"
-echo "  4. npm start"
+echo "  1. cd $AGENT_DIR"
+echo "  2. Edit agent.md — define your agent's identity"
+echo "  3. cp .env.example .env — add your bot token and vault path"
+echo "  4. Add custom skills in .claude/skills/"
+echo "  5. npm start"

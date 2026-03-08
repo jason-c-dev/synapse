@@ -77,17 +77,15 @@ flowchart TB
 
 ### Creating Your Own Agent
 
-The recommended way to build on Synapse is as a **separate project** that consumes Synapse as a git submodule. Your agent is its own repo — Synapse is infrastructure.
+The recommended way to build on Synapse is as a **separate project** that consumes Synapse as a git submodule. Your agent is its own repo — Synapse is infrastructure. No need to clone Synapse first — the script adds it as a submodule automatically.
 
 ```bash
-# From the parent directory where you want to create your agent
-bash synapse/scripts/create-agent.sh my-agent
+bash <(curl -sL https://raw.githubusercontent.com/jason-c-dev/synapse/main/scripts/create-agent.sh) my-agent
 ```
 
-Or if you haven't cloned Synapse yet:
+Or if you already have Synapse cloned locally:
 
 ```bash
-git clone https://github.com/jason-c-dev/synapse.git
 bash synapse/scripts/create-agent.sh my-agent
 ```
 
