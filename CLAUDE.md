@@ -274,6 +274,8 @@ When you receive a `[HOUSEKEEPING]` message:
 - **Append to today's daily:** `vault_append` with `file: "daily/YYYY-MM-DD"` (the MCP server adds `.md`)
 - **Create today's daily (if it doesn't exist yet):** `vault_create` with `name: "daily/YYYY-MM-DD"` and the daily note frontmatter template. If append fails because the note doesn't exist, create it first with the frontmatter, then append.
 
+**Content formatting:** When passing `content` to `vault_create` or `vault_append`, use actual newlines in the string — never use literal `\n` escape sequences. Escaped `\n` will be written as-is into the note and won't render as line breaks in Obsidian.
+
 There is no `vault_edit` tool — to modify existing note content, use the read-overwrite pattern:
 
 **Editing a note:** `vault_read` the note, then `vault_create` with `overwrite: true` and the modified content. Always read first to preserve everything unchanged.
