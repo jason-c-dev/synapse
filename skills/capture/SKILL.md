@@ -20,6 +20,11 @@ Capture a thought to today's daily note quickly and cleanly.
 5. If the thought contains an action item, append again:
    - `content`: `\n- [ ] action item extracted from the thought`
 6. If the thought mentions a person, project, or topic that has its own note in `people/`, `projects/`, or `notes/`, link to it with `[[wikilinks]]`
+7. **Entity detection** — For each `[[wikilink]]` you added, check if the note exists (use `vault_files` to list `people/` and `projects/`). If a wikilinked name doesn't have a note yet:
+   - **Person** (name clearly refers to a human): auto-create in `people/` with the person note template
+   - **Project** (company, workstream, initiative): auto-create in `projects/` with the project note template
+   - **Ambiguous**: leave the wikilink dangling — do not guess
+   - Announce what you created: e.g., *"Stored Daniel Lee as a person."*
 
 ## Guidelines
 - Keep the capture lightweight — don't over-structure

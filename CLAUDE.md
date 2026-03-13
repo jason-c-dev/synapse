@@ -245,6 +245,18 @@ The `type/*` tag is mandatory on every note. `topic/*` tags are optional but enc
 - Topic notes link to related people, projects, and other notes
 - Use `[[wikilinks]]` for vault notes, `[text](url)` for external URLs
 
+### Entity detection (opinionated, transparent)
+
+When adding `[[wikilinks]]` to any note, check whether the referenced note exists (use `vault_files` to list `people/` and `projects/`). If it doesn't:
+
+- **Person** (name that clearly refers to a human): auto-create in `people/` with the person note template. Announce in your response: *"Stored X as a person."*
+- **Project** (company, workstream, or initiative with deliverables): auto-create in `projects/` with the project note template. Announce in your response: *"Stored X as a project."*
+- **Ambiguous**: do not auto-create. Use the wikilink as-is — dangling links are acceptable when the type is unclear. The user can promote it later.
+
+Do NOT auto-create topic notes in `notes/` — topics are too subjective to infer. Only create topic notes when the user explicitly asks or shares substantial standalone content.
+
+This pattern is **opinionated but transparent**: act on reasonable inference, announce what you did, and let the user correct if the classification is wrong.
+
 ## Housekeeping
 
 Synapse runs automated housekeeping on a schedule (weekly, monthly, yearly reviews). These messages arrive prefixed with `[HOUSEKEEPING]`.
